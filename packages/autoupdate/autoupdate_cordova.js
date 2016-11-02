@@ -1,7 +1,18 @@
 var autoupdateVersionCordova = __meteor_runtime_config__.autoupdateVersionCordova || "unknown";
 
+var options;
+var Connection = Meteor;
+
+var DDP_URL = __meteor_runtime_config__.DDP_DEFAULT_CONNECTION_URL;
+var ROOT_URL = __meteor_runtime_config__.ROOT_URL;
+
+if(DDP_URL && ROOT_URL && DDP_URL !== ROOT_URL) {
+  Connection = DDP.connect(ROOT_URL);
+  options = { connection: Connection };
+}
+
 // The collection of acceptable client versions.
-ClientVersions = new Mongo.Collection("meteor_autoupdate_clientVersions");
+ClientVersions = new Mongo.Collection("meteor_autoupdate_clientVersions", options);
 
 Autoupdate = {};
 
@@ -28,7 +39,7 @@ var failures = 0;
 
 Autoupdate._retrySubscription = function() {
   var appId = __meteor_runtime_config__.appId;
-  Meteor.subscribe("meteor_autoupdate_clientVersions", appId, {
+  Connection.subscribe("meteor_autoupdate_clientVersions", appId, {
     onError: function(error) {
       console.log("autoupdate subscription failed:", error);
       failures++;

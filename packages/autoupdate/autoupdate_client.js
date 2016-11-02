@@ -28,8 +28,19 @@ var autoupdateVersion = __meteor_runtime_config__.autoupdateVersion || "unknown"
 var autoupdateVersionRefreshable =
   __meteor_runtime_config__.autoupdateVersionRefreshable || "unknown";
 
+var options;
+var Connection = Meteor;
+
+var DDP_URL = __meteor_runtime_config__.DDP_DEFAULT_CONNECTION_URL;
+var ROOT_URL = __meteor_runtime_config__.ROOT_URL;
+
+if(DDP_URL && ROOT_URL && DDP_URL !== ROOT_URL) {
+  Connection = DDP.connect(ROOT_URL);
+  options = { connection: Connection };
+}
+
 // The collection of acceptable client versions.
-ClientVersions = new Mongo.Collection("meteor_autoupdate_clientVersions");
+ClientVersions = new Mongo.Collection("meteor_autoupdate_clientVersions", options);
 
 Autoupdate = {};
 
@@ -60,7 +71,7 @@ var retry = new Retry({
 var failures = 0;
 
 Autoupdate._retrySubscription = function () {
-  Meteor.subscribe("meteor_autoupdate_clientVersions", {
+  Connection.subscribe("meteor_autoupdate_clientVersions", {
     onError: function (error) {
       Meteor._debug("autoupdate subscription failed:", error);
       failures++;
