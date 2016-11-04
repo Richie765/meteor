@@ -139,28 +139,36 @@ export class CordovaBuilder {
       'http://localhost': { type: 'navigation' }
     };
 
-    const mobileServerUrl = this.options.mobileServerUrl;
-    const serverDomain = mobileServerUrl ?
-      utils.parseUrl(mobileServerUrl).hostname : null;
+    let addServerAccessRule = (serverDomain) => {
+      // If the remote server domain is known, allow access to it for XHR and DDP
+      // connections.
+      if (serverDomain) {
+        // Application Transport Security (new in iOS 9) doesn't allow you
+        // to give access to IP addresses (just domains). So we allow access to
+        // everything if we don't have a domain, which sets NSAllowsArbitraryLoads.
+        if (utils.isIPv4Address(serverDomain)) {
+          this.accessRules['*'] = { type: 'network' };
+        } else {
+          this.accessRules['*://' + serverDomain] = { type: 'network' };
 
-    // If the remote server domain is known, allow access to it for XHR and DDP
-    // connections.
-    if (serverDomain) {
-      // Application Transport Security (new in iOS 9) doesn't allow you
-      // to give access to IP addresses (just domains). So we allow access to
-      // everything if we don't have a domain, which sets NSAllowsArbitraryLoads.
-      if (utils.isIPv4Address(serverDomain)) {
-        this.accessRules['*'] = { type: 'network' };
-      } else {
-        this.accessRules['*://' + serverDomain] = { type: 'network' };
-
-        // Android talks to localhost over 10.0.2.2. This config file is used for
-        // multiple platforms, so any time that we say the server is on localhost we
-        // should also say it is on 10.0.2.2.
-        if (serverDomain === 'localhost') {
-          this.accessRules['*://10.0.2.2'] = { type: 'network' };
+          // Android talks to localhost over 10.0.2.2. This config file is used for
+          // multiple platforms, so any time that we say the server is on localhost we
+          // should also say it is on 10.0.2.2.
+          if (serverDomain === 'localhost') {
+            this.accessRules['*://10.0.2.2'] = { type: 'network' };
+          }
         }
       }
+    }
+
+    const mobileServerUrl = this.options.mobileServerUrl;
+    if(mobileServerUrl) {
+      addServerAccessRule(utils.parseUrl(mobileServerUrl).hostname);
+    }
+
+    const mobileRootUrl = this.options.mobileRootUrl;
+    if(mobileRootUrl) {
+      addServerAccessRule(utils.parseUrl(mobileRootUrl).hostname);
     }
 
     this.imagePaths = {
@@ -411,10 +419,11 @@ export class CordovaBuilder {
     const autoupdateVersion = process.env.AUTOUPDATE_VERSION || program.version;
 
     const mobileServerUrl = this.options.mobileServerUrl;
+    const mobileRootUrl = this.options.mobileRootUrl;
 
     const runtimeConfig = {
       meteorRelease: meteorRelease,
-      ROOT_URL: mobileServerUrl,
+      ROOT_URL: mobileRootUrl,
       // XXX propagate it from this.options?
       ROOT_URL_PATH_PREFIX: '',
       DDP_DEFAULT_CONNECTION_URL: mobileServerUrl,
@@ -643,7 +652,7 @@ configuration. The key may be deprecated.`);
      *
      * `App.appendToConfig('<any-xml-content/>');`
      *
-     * @param  {String} element The XML you want to include 
+     * @param  {String} element The XML you want to include
      * @memberOf App
      */
     appendToConfig: function (xml) {
