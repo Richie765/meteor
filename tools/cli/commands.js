@@ -73,13 +73,16 @@ var showInvalidArchMsg = function (arch) {
   });
 };
 
-// Utility functions to parse options in run/build/test-packages commands
+// Utility functions to parse options in run/test/test-packages commands
 
 export function parseServerOptionsForRunCommand(options, runTargets) {
   const parsedServerUrl = parsePortOption(options.port);
 
-  // XXX COMPAT WITH 0.9.2.2 -- the 'mobile-port' option is deprecated
-  const mobileServerOption = options['mobile-server'] || options['mobile-port'];
+  // XXX COMPAT WITH 0.9.2.2 -- the --mobile-port option is deprecated
+  if(options["mobile-port"]) {
+    Console.warn("Option --mobile-port is deprecated, use --mobile-server instead.");
+  }
+  const mobileServerOption = options['mobile-server'] || options['mobile-root'] || options['mobile-port'];
   let parsedMobileServerUrl;
   if (mobileServerOption) {
     parsedMobileServerUrl = parseMobileServerOption(mobileServerOption);
@@ -90,7 +93,18 @@ export function parseServerOptionsForRunCommand(options, runTargets) {
       isRunOnDeviceRequested);
   }
 
-  return { parsedServerUrl, parsedMobileServerUrl };
+  const mobileRootOption = options['mobile-root'] || options['mobile-server'];
+  let parsedMobileRootUrl;
+  if (mobileRootOption) {
+    parsedMobileRootUrl = parseMobileServerOption(mobileRootOption, 'mobile-root');
+  } else {
+    const isRunOnDeviceRequested = _.any(runTargets,
+      runTarget => runTarget.isDevice);
+    parsedMobileRootUrl = detectMobileServerUrl(parsedServerUrl,
+      isRunOnDeviceRequested);
+  }
+
+  return { parsedServerUrl, parsedMobileServerUrl, parsedMobileRootUrl };
 }
 
 function parsePortOption(portOption) {
@@ -252,6 +266,7 @@ var runCommandOptions = {
   options: {
     port: { type: String, short: "p", default: DEFAULT_PORT },
     'mobile-server': { type: String },
+    'mobile-root': { type: String },
     // XXX COMPAT WITH 0.9.2.2
     'mobile-port': { type: String },
     'app-port': { type: String },
@@ -286,7 +301,7 @@ function doRunCommand(options) {
   // Additional args are interpreted as run targets
   const runTargets = parseRunTargets(options.args);
 
-  const { parsedServerUrl, parsedMobileServerUrl } =
+  const { parsedServerUrl, parsedMobileServerUrl, parsedMobileRootUrl } =
     parseServerOptionsForRunCommand(options, runTargets);
 
   var projectContext = new projectContextModule.ProjectContext({
@@ -329,7 +344,7 @@ function doRunCommand(options) {
   if (options.production) {
     Console.warn(
       "Warning: The --production flag should only be used to simulate production " +
-      "bundling for testing purposes. Use meteor build to create a bundle for " + 
+      "bundling for testing purposes. Use meteor build to create a bundle for " +
       "production deployment. See: https://guide.meteor.com/deployment.html"
     );
   }
@@ -339,7 +354,7 @@ function doRunCommand(options) {
   }
 
   let webArchs = ['web.browser'];
-  if (!_.isEmpty(runTargets) || options['mobile-server']) {
+  if (!_.isEmpty(runTargets) || options['mobile-server'] || options['mobile-root']) {
     webArchs.push("web.cordova");
   }
 
@@ -348,7 +363,9 @@ function doRunCommand(options) {
     main.captureAndExit('', 'preparing Cordova project', () => {
       const cordovaProject = new CordovaProject(projectContext, {
         settingsFile: options.settings,
-        mobileServerUrl: utils.formatUrl(parsedMobileServerUrl) });
+        mobileServerUrl: utils.formatUrl(parsedMobileServerUrl),
+        mobileRootUrl: utils.formatUrl(parsedMobileRootUrl)
+      });
       if (buildmessage.jobHasMessages()) return;
 
       cordovaRunner = new CordovaRunner(cordovaProject, runTargets);
@@ -576,7 +593,7 @@ main.registerCommand({
 
     Console.info();
     Console.info("To create an example, simply", Console.command("git clone"),
-      "the relevant repository and branch (run", 
+      "the relevant repository and branch (run",
       Console.command("'meteor create --example <name>'"),
       " to see the full command).");
     return 0;
@@ -784,7 +801,10 @@ var buildCommands = {
     architecture: { type: String },
     "server-only": { type: Boolean },
     'mobile-settings': { type: String },
+    // --server Deprecated, replaced by --mobile-server
     server: { type: String },
+    "mobile-server": { type: String },
+    "mobile-root": { type: String },
     // XXX COMPAT WITH 0.9.2.2
     "mobile-port": { type: String },
     // Indicates whether these build is running headless, e.g. in a
@@ -869,6 +889,7 @@ var buildCommand = function (options) {
 
   let cordovaPlatforms;
   let parsedMobileServerUrl;
+  let parsedMobileRootUrl;
   if (!serverOnly) {
     cordovaPlatforms = projectContext.platformList.getCordovaPlatforms();
 
@@ -880,17 +901,35 @@ on an OS X system.");
 
     if (!_.isEmpty(cordovaPlatforms)) {
       // XXX COMPAT WITH 0.9.2.2 -- the --mobile-port option is deprecated
-      const mobileServerOption = options.server || options["mobile-port"];
+      if(options["mobile-port"]) {
+        Console.warn("Option --mobile-port is deprecated, use --mobile-server instead.");
+      }
+
+      // XXX COMPAT -- the --mobile option is deprecated
+      if(options["server"]) {
+        Console.warn("Option --server is deprecated, use --mobile-server instead.");
+      }
+
+      const mobileServerOption = options["mobile-server"] || options["server"] || options["mobile-root"] || options["mobile-port"];
       if (!mobileServerOption) {
-        // For Cordova builds, require '--server'.
+        // For Cordova builds, require '--mobile-server'.
         // XXX better error message?
         Console.error(
-          "Supply the server hostname and port in the --server option " +
+          "Supply the server hostname and port in the --mobile-server option " +
             "for mobile app builds.");
         return 1;
       }
       parsedMobileServerUrl = parseMobileServerOption(mobileServerOption,
-        'server');
+        'mobile-server');
+
+      const mobileRootOption = options["mobile-root"];
+      if (mobileRootOption) {
+        parsedMobileRootUrl = parseMobileServerOption(mobileRootOption,
+          'mobile-root');
+      }
+      else {
+        parsedMobileRootUrl = parsedMobileServerUrl;
+      }
     }
   } else {
     cordovaPlatforms = [];
@@ -969,7 +1008,9 @@ ${Console.command("meteor build ../output")}`,
       buildmessage.enterJob({ title: "preparing Cordova project" }, () => {
         cordovaProject = new CordovaProject(projectContext, {
           settingsFile: options.settings,
-          mobileServerUrl: utils.formatUrl(parsedMobileServerUrl) });
+          mobileServerUrl: utils.formatUrl(parsedMobileServerUrl),
+          mobileRootUrl: utils.formatUrl(parsedMobileRootUrl)
+        });
         if (buildmessage.jobHasMessages()) return;
 
         const pluginVersions = cordova.pluginVersionsFromStarManifest(
@@ -983,7 +1024,7 @@ ${Console.command("meteor build ../output")}`,
           { title: `building Cordova app for \
 ${cordova.displayNameForPlatform(platform)}` }, () => {
             let buildOptions = { release: !options.debug };
-            
+
             const buildPath = files.pathJoin(
               projectContext.getProjectLocalDirectory('cordova-build'),
               'platforms', platform);
@@ -1208,7 +1249,7 @@ main.registerCommand({
       Console.command("meteor deploy appname"), Console.options({ indent: 2 }));
     return 1;
   }
-  
+
   if (process.env.MONGO_URL) {
     Console.info("As a precaution, meteor reset only clears the local database that is " +
                  "provided by meteor run for development. The database specified with " +
@@ -1438,6 +1479,7 @@ testCommandOptions = {
   options: {
     port: { type: String, short: "p", default: DEFAULT_PORT },
     'mobile-server': { type: String },
+    'mobile-root': { type: String },
     // XXX COMPAT WITH 0.9.2.2
     'mobile-port': { type: String },
     'debug-port': { type: String },
@@ -1533,7 +1575,7 @@ function doTestCommand(options) {
   const runTargets = parseRunTargets(_.intersection(
     Object.keys(options), ['ios', 'ios-device', 'android', 'android-device']));
 
-  const { parsedServerUrl, parsedMobileServerUrl } =
+  const { parsedServerUrl, parsedMobileServerUrl, parsedMobileRootUrl } =
     parseServerOptionsForRunCommand(options, runTargets);
 
   // Make a temporary app dir (based on the test runner app). This will be
@@ -1640,7 +1682,7 @@ function doTestCommand(options) {
 
     global.testCommandMetadata.isAppTest = options['full-app'];
     global.testCommandMetadata.isTest = !global.testCommandMetadata.isAppTest;
-    
+
     projectContextOptions.projectDir = options.appDir;
     projectContextOptions.projectLocalDir = files.pathJoin(testRunnerAppDir, '.meteor', 'local');
 
@@ -1670,7 +1712,7 @@ function doTestCommand(options) {
     copyDirIntoTestRunnerApp(true, '.meteor', 'local', 'isopacks');
     copyDirIntoTestRunnerApp(true, '.meteor', 'local', 'plugin-cache');
     copyDirIntoTestRunnerApp(true, '.meteor', 'local', 'shell');
-    
+
     projectContext = new projectContextModule.ProjectContext(projectContextOptions);
 
     main.captureAndExit("=> Errors while setting up tests:", function () {
@@ -1691,7 +1733,9 @@ function doTestCommand(options) {
     main.captureAndExit('', 'preparing Cordova project', () => {
       const cordovaProject = new CordovaProject(projectContext, {
         settingsFile: options.settings,
-        mobileServerUrl: utils.formatUrl(parsedMobileServerUrl) });
+        mobileServerUrl: utils.formatUrl(parsedMobileServerUrl),
+        mobileRootUrl: utils.formatUrl(parsedMobileRootUrl)
+      });
       if (buildmessage.jobHasMessages()) return;
 
       cordovaRunner = new CordovaRunner(cordovaProject, runTargets);
@@ -1772,7 +1816,7 @@ var runTestAppForPackages = function (projectContext, options) {
     minifyMode: options.production ? 'production' : 'development'
   };
   buildOptions.buildMode = "test";
-  
+
   if (options.deploy) {
     // Run the constraint solver and build local packages.
     main.captureAndExit("=> Errors while initializing project:", function () {
