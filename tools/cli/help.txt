@@ -52,6 +52,9 @@ Options:
                    Defaults to your local IP and the port that the Meteor
                    server binds to. Can include a URL scheme (for
                    example, --mobile-server=https://example.com:443).
+  --mobile-root    Location that mobile builds use as the root URL of the App.
+                   Defaults to the value of --mobile-server. This will also be
+                   used for mobile hot code pushes.
   --production     Simulate production mode. Minify and bundle CSS and JS files.
   --raw-logs       Run without parsing logs from stdout and stderr.
   --settings, -s   Set optional data for Meteor.settings on the server.
@@ -277,7 +280,8 @@ tarball. See 'meteor help build' for more information.
 >>> build
 Build this project for all platforms.
 Usage: meteor build <output path> [--debug] [--directory] [--server-only]
-          [--mobile-settings settings.json] [--server http://example.com:3000]
+          [--mobile-settings settings.json] [--mobile-server http://example.com:3000]
+          [--mobile-root http://example.com:3000]
 
 Package this project up for deployment. The command outputs a directory with
 builds for all platforms in this project.
@@ -305,9 +309,12 @@ Options:
                       in your mobile application. A new value for
                       Meteor.settings can be set later by the server as part of
                       hot code push.
-  --server            Location where mobile builds connect to the Meteor server.
+  --mobile-server     Location where mobile builds connect to the Meteor server.
                       Defaults to localhost:3000. Can include a URL scheme
                       (for example, --server=https://example.com:443).
+  --mobile-root       Location that mobile builds use as the root URL of the App.
+                      Defaults to the value of --mobile-server. This will also be
+                      used for mobile hot code pushes.
   --architecture      Builds the server for a different architecture than your
                       developer machine's architecture. Valid architectures
                       include os.osx.x86_64, os.linux.x86_64, and
