@@ -553,6 +553,7 @@ var runWebAppServer = function () {
           // connecting to http://example.meteor.com when force-ssl is
           // in use.)
           DDP_DEFAULT_CONNECTION_URL: process.env.MOBILE_DDP_URL ||
+            process.env.DDP_URL ||
             process.env.DDP_DEFAULT_CONNECTION_URL ||
             Meteor.absoluteUrl(),
           ROOT_URL: process.env.MOBILE_ROOT_URL ||
